@@ -1,102 +1,133 @@
 import yfinance as yf
 import time
+import os
+import requests
+from datetime import datetime, timedelta
+from dotenv import load_dotenv
+from supabase import create_client, Client
 
-def hisse_verisi_getir(portfoy, onceki_fiyat):
-    """
-    Kullanıcının portföyündeki hisse senedinin anlık/güncel verilerini çeker ve
-    kar/zarar ile hedef fiyat durumunu hesaplayıp ekrana yazdırır.
-    """
-    hisse_kodu = portfoy['kod']
-    
-    try:
-        hisse = yf.Ticker(hisse_kodu)
-        fiyat = hisse.fast_info['lastPrice']
-    except Exception:
-        print(f"{hisse_kodu} için fiyat bilgisi bulunamadı. Lütfen hisse kodunu kontrol edin veya piyasa bağlantısını bekleyin.")
-        return onceki_fiyat
+# .env dosyasını yükle
+load_dotenv()
 
-    zaman = time.strftime("%H:%M:%S")
-    
-    # Anlık Değişim (Bir önceki veri çekimine göre)
-    anlik_degisim_yuzdesi = 0.0
-    anlik_icon = "-"
-    if onceki_fiyat is not None and onceki_fiyat > 0:
-        anlik_degisim_yuzdesi = ((fiyat - onceki_fiyat) / onceki_fiyat) * 100
-        if fiyat > onceki_fiyat:
-            anlik_icon = "▲"
-        elif fiyat < onceki_fiyat:
-            anlik_icon = "▼"
-    
-    # Portfolio hesaplamaları
-    maliyet = portfoy['maliyet']
-    adet = portfoy['adet']
-    hedef_fiyat = portfoy['hedef_fiyat']
-    
-    toplam_maliyet_tutari = maliyet * adet
-    guncel_toplam_deger = fiyat * adet
-    
-    kar_zarar_tutari = guncel_toplam_deger - toplam_maliyet_tutari
-    kar_zarar_yuzdesi = ((fiyat - maliyet) / maliyet) * 100 if maliyet > 0 else 0
-    
-    durum_renkli_ok = "🟢 KÂR" if kar_zarar_tutari >= 0 else "🔴 ZARAR"
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-    # Ekrana Yazdırma
-    print(f"[{zaman}] {hisse_kodu: <9} | Güncel: {fiyat:.2f} ₺ {anlik_icon} (%{anlik_degisim_yuzdesi:.2f})")
-    print(f"    └─ Toplam Değer : {guncel_toplam_deger:.2f} ₺ (Maliyet: {toplam_maliyet_tutari:.2f} ₺)")
-    print(f"    └─ Kâr/Zarar    : {kar_zarar_tutari:.2f} ₺ | %{kar_zarar_yuzdesi:.2f} ({durum_renkli_ok})")
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-    # Hedef Kontrolü
-    if fiyat >= hedef_fiyat:
-        print(f"    ⭐ HEDEFE ULAŞILDI! (Güncel: {fiyat:.2f} ₺ >= Hedef: {hedef_fiyat:.2f} ₺)")
-        
-    return fiyat
+# Bildirimi gönderilen hisseleri takip etmek için (aynı hedefte 30 dk aralıkla bildirim atmak için)
+# Format: {hisse_kodu: last_notification_datetime}
+bildirim_zamanlari = {}
 
-def sayi_al(mesaj):
-    while True:
-        try:
-            deger = input(mesaj).replace(',', '.')
-            return float(deger)
-        except ValueError:
-            print("Lütfen geçerli bir sayı giriniz!")
-
-def main():
-    print("--- Borsa Portföy ve Hedef Takip Sistemi ---")
-    istenen_hisse = input("Takip etmek istediğiniz hisse kodunu girin (Örn: BASGZ): ").strip().upper()
+def piyasa_acik_mi():
+    """Borsa İstanbul piyasa saatlerini kontrol eder (10:00 - 18:30)"""
+    simdi = datetime.now()
+    # Cumartesi = 5, Pazar = 6
+    if simdi.weekday() >= 5:
+        return False
     
-    if not istenen_hisse.endswith(".IS"):
-        istenen_hisse += ".IS"
+    saat_dakika = simdi.hour * 100 + simdi.minute
+    return 1000 <= saat_dakika <= 1830
 
-    adet = sayi_al(f"Kaç adet {istenen_hisse} hissesine sahipsiniz?: ")
-    maliyet = sayi_al(f"{istenen_hisse} hissesinin alış maliyeti (Birim Fiyat ₺) nedir?: ")
-    hedef_yuzde = sayi_al("Yüzde kaç (%) kârhedefi bekliyorsunuz? (Örn: 5): ")
-    
-    hedef_fiyat = maliyet + (maliyet * (hedef_yuzde / 100))
-    
-    portfoy = {
-        'kod': istenen_hisse,
-        'adet': adet,
-        'maliyet': maliyet,
-        'hedef_yuzde': hedef_yuzde,
-        'hedef_fiyat': hedef_fiyat
+def telegram_mesaj_gonder(mesaj):
+    """Telegram üzerinden kullanıcıya mesaj gönderir"""
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": mesaj,
+        "parse_mode": "Markdown"
     }
-
-    print(f"\n--- Sistem Kaydedildi ---")
-    print(f"Hisse: {istenen_hisse}")
-    print(f"Adet: {adet} | Maliyet: {maliyet:.2f} ₺ | Toplam Yatırım: {(adet*maliyet):.2f} ₺")
-    print(f"Hedeflenen Satış Fiyatı: {hedef_fiyat:.2f} ₺ (%{hedef_yuzde} Kâr)")
-    print("------------------------------------------\n")
-    print("Canlı izleme başlatılıyor... (Çıkış yapmak için Ctrl+C tuşlarına basabilirsiniz)\n")
-
-    onceki_fiyat = None
-
     try:
-        while True:
-            onceki_fiyat = hisse_verisi_getir(portfoy, onceki_fiyat)
-            print("-" * 55)
-            time.sleep(10)
+        requests.post(url, json=payload)
+    except Exception as e:
+        print(f"Telegram mesaj gönderme hatası: {e}")
+
+def portfoy_getir():
+    """Supabase'den güncel portföy verilerini çeker"""
+    try:
+        response = supabase.table("portfoy").select("*").execute()
+        return response.data
+    except Exception as e:
+        print(f"Supabase veri çekme hatası: {e}")
+        return []
+
+def hisse_takip():
+    global bildirim_zamanlari
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] Takip başlatılıyor...")
+    
+    onceki_fiyatlar = {}
+
+    while True:
+        if not piyasa_acik_mi():
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] Piyasa kapalı. Bekleniyor...")
+            time.sleep(60)
+            continue
+
+        portfoy = portfoy_getir()
+        if not portfoy:
+            print("Portföy boş veya çekilemedi.")
+            time.sleep(30)
+            continue
+
+        hedefe_ulasanlar = []
+        simdi = datetime.now()
+        
+        print("\n" + "="*50)
+        print(f"GÜNCEL DURUM - {simdi.strftime('%H:%M:%S')}")
+        print("="*50)
+
+        for item in portfoy:
+            hisse_kodu = item['hisse_kodu']
+            maliyet = float(item['maliyet'])
+            adet = float(item['adet'])
+            hedef_yuzde = float(item['hedef_yuzde'] or 0)
+            hedef_fiyat = maliyet * (1 + hedef_yuzde / 100)
+
+            try:
+                hisse = yf.Ticker(hisse_kodu)
+                fiyat = hisse.fast_info['lastPrice']
+            except Exception:
+                continue
+
+            # Değişim hesapla
+            onceki = onceki_fiyatlar.get(hisse_kodu)
+            icon = "-"
+            degisim = 0
+            if onceki:
+                degisim = ((fiyat - onceki) / onceki) * 100
+                icon = "▲" if fiyat > onceki else "▼" if fiyat < onceki else "-"
             
-    except KeyboardInterrupt:
-        print("\nCanlı takip işlemi kullanıcı tarafından sonlandırıldı.")
+            onceki_fiyatlar[hisse_kodu] = fiyat
+
+            kar_zarar_yuzde = ((fiyat - maliyet) / maliyet) * 100
+            durum = "🟢" if kar_zarar_yuzde >= 0 else "🔴"
+
+            print(f"{hisse_kodu: <10} | {fiyat:.2f} ₺ {icon} (%{degisim:+.2f}) | K/Z: %{kar_zarar_yuzde:.2f} {durum}")
+
+            # Hedef kontrolü
+            if fiyat >= hedef_fiyat:
+                son_bildirim = bildirim_zamanlari.get(hisse_kodu)
+                
+                # Hiç bildirim gitmediyse veya üzerinden 30 dk geçtiyse
+                if son_bildirim is None or (simdi - son_bildirim) >= timedelta(minutes=30):
+                    hedefe_ulasanlar.append(f"⭐ *{hisse_kodu}* HEDEF VERİYE ULAŞTI!\nGüncel: {fiyat:.2f} ₺ >= Hedef: {hedef_fiyat:.2f} ₺")
+                    bildirim_zamanlari[hisse_kodu] = simdi
+            else:
+                # Fiyat hedefin altına düşerse zamanı sıfırla (tekrar çıkarsa hemen atsın diye)
+                if hisse_kodu in bildirim_zamanlari:
+                    del bildirim_zamanlari[hisse_kodu]
+
+        if hedefe_ulasanlar:
+            mesaj = "\n\n".join(hedefe_ulasanlar)
+            telegram_mesaj_gonder(mesaj)
+            print("\n>>> Telegram bildirimi gönderildi!")
+
+        print("="*50)
+        time.sleep(30)
 
 if __name__ == "__main__":
-    main()
+    try:
+        hisse_takip()
+    except KeyboardInterrupt:
+        print("\nTakip durduruldu.")
