@@ -61,12 +61,16 @@ def hisse_takip():
     while True:
         if not piyasa_acik_mi():
             print(f"[{datetime.now().strftime('%H:%M:%S')}] Piyasa kapalı. Bekleniyor...")
+            if os.getenv("GITHUB_ACTIONS"):
+                break
             time.sleep(60)
             continue
 
         portfoy = portfoy_getir()
         if not portfoy:
             print("Portföy boş veya çekilemedi.")
+            if os.getenv("GITHUB_ACTIONS"):
+                break
             time.sleep(30)
             continue
 
@@ -78,6 +82,7 @@ def hisse_takip():
         print("="*50)
 
         for item in portfoy:
+            # ... (içerik aynı kalacak)
             hisse_kodu = item['hisse_kodu']
             maliyet = float(item['maliyet'])
             adet = float(item['adet'])
@@ -124,6 +129,11 @@ def hisse_takip():
             print("\n>>> Telegram bildirimi gönderildi!")
 
         print("="*50)
+        
+        # GitHub Actions ise döngüden çık
+        if os.getenv("GITHUB_ACTIONS"):
+            break
+            
         time.sleep(30)
 
 if __name__ == "__main__":
