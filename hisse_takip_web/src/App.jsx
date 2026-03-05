@@ -1,5 +1,6 @@
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
 import { useState, useEffect } from 'react';
+// Vercel deployment trigger
 import { supabase } from './supabaseClient';
 import Hisse from './pages/Hisse';
 import Altin from './pages/Altin';
