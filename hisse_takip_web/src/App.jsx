@@ -6,6 +6,7 @@ import Hisse from './pages/Hisse';
 import Altin from './pages/Altin';
 import Doviz from './pages/Doviz';
 import Ozet from './pages/Ozet';
+import Takip from './pages/Takip';
 import Login from './pages/Login';
 import { LogOut } from 'lucide-react';
 import './index.css';
@@ -21,6 +22,7 @@ function Navbar({ onLogout }) {
         <Link to="/hisseler" className={location.pathname === '/hisseler' ? 'active' : ''}>📈 Hisseler</Link>
         <Link to="/altin" className={location.pathname === '/altin' ? 'active' : ''}>🥇 K. Madenler</Link>
         <Link to="/doviz" className={location.pathname === '/doviz' ? 'active' : ''}>💵 Döviz</Link>
+        <Link to="/takip" className={location.pathname === '/takip' ? 'active' : ''}>🎯 Takip Sistemi</Link>
         <button onClick={onLogout} className="btn-logout" title="Çıkış Yap">
           <LogOut size={18} />
         </button>
@@ -69,6 +71,7 @@ function App() {
           <Route path="/hisseler" element={<Hisse />} />
           <Route path="/altin" element={<Altin />} />
           <Route path="/doviz" element={<Doviz />} />
+          <Route path="/takip" element={<Takip />} />
         </Routes>
       </div>
     </Router>
